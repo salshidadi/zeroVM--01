@@ -36,8 +36,27 @@ typedef int (*opcode_function_t)(unsigned char, unsigned char);
 #define OPCODE_MULMI 25
 #define OPCODE_DIVMI 26
 
+#define OPCODE_JLOE 27
+#define OPCODE_JGOE 28
+
+#define OPCODE_AND 29
+#define OPCODE_OR 30
+#define OPCODE_XOR 31
+#define OPCODE_NOT 32
+#define OPCODE_SHL 33
+#define OPCODE_SHR 34
+
+#define OPCODE_PUSH 35
+#define OPCODE_POP 36
+#define OPCODE_PRINT_STACK 37
+
+#define OPCODE_CALL 38
+#define OPCODE_RETURN 39
+
+
+//////////////////////
 #define PROGRAM_SIZE sizeof(program)
-#define INSTRUCTIONS_COUNT 27
+#define INSTRUCTIONS_COUNT 40
 #define INSTRUCTION_SIZE 3
 
 #define LEFT_OPERAND IP + 1
@@ -46,22 +65,51 @@ typedef int (*opcode_function_t)(unsigned char, unsigned char);
 #define RX_COUNT 4
 
 #define CODE_OFFSET 5
+#define STACK_SIZE 5
+#define STACK_BOUNDARY (PROGRAM_SIZE - STACK_SIZE)
 
 static unsigned char program[] = {
+    // Data
     2, 4, 6, 8, 9,
+///////////////////////////////////
+    // Code
+    // /* 0 */ 16, 0,1,  /* LDM R0, 2 */
+    // /* 3 */ 16, 1, 2,  /* LDM R1, 6 */
+    // /* 0 */ 12, 0,1,  /* CMP R0, R1 */
+    // /* 3 */ 28, 21, 0,  /* JMP 21   */
 
-    /* 0 */ 16, 0, 10,  /* LDI R0, 10 */
-    /* 3 */ 16, 1, 20,  /* LDI R1, 20 */
-    /* 9 */ 19, 0, 0,  /* LDI R0, 70 */ //12
-    /* 9 */ 20, 1, 2,  /* LDI R0, 70 */ //14
-    /* 9 */ 21, 0, 0,  /* LDI R0, 70 */ //24
-    /* 9 */ 22, 0, 3,  /* LDI R0, 70 */ //3
+    // /* 0 */ 16, 0,0,  /* LDM R0, 2 */
+    // /* 0 */ 16, 0,0,  /* LDM R0, 2 */
+    // /* 0 */ 16, 0,0,  /* LDM R0, 2 */
+
+    // /* 3 */ 16, 1, 2,  /* LDM R1, 6 */
+
+   /* 0 */  35, 10,0,
+   /* 3 */  38, 21, 0, //call
+   /* 6 */  35, 20, 0,
+   /* 9 */  35, 30, 0,
+   /* 12 */  35, 40, 0,
+   /* 15 */  35, 50, 0,
+   /* 18 */  11, 33, 0, //jmp
+   /* 21 */  37,0, 0, // called
+  /* 24 */  0, 40, 16,
+   /* 27 */  0, 50, 13,   
+   /* 30 */  39, 0, 0, //return 
+    /* 33 */  35, 30, 0,
+    //////////////////////////////////////////
+    //stack
+    0,
+    0,
+    0,
+    0,
+    0
 };
 
 /* Registers */
 static int IP = CODE_OFFSET;
 static unsigned char IR[INSTRUCTION_SIZE] = {0, 0, 0};
 static int OUTPUT = 0;
+static int stack_ptr = PROGRAM_SIZE;
 
 static unsigned char FLAGS = 0;
 
@@ -289,7 +337,7 @@ int opcode_dec(unsigned char left_operand, unsigned char right_operand)
 
 int opcode_jmp(unsigned char left_operand, unsigned char right_operand)
 {
-    IP = left_operand;
+    IP = left_operand + CODE_OFFSET;
     return left_operand;
 }
 
@@ -322,7 +370,7 @@ int opcode_je(unsigned char left_operand, unsigned char right_operand)
 
     if ((FLAGS & FLAG_ZERO) == FLAG_ZERO)
     {
-        IP = left_operand;
+        IP = left_operand + CODE_OFFSET;
         return left_operand;
     }
 
@@ -334,7 +382,7 @@ int opcode_jl(unsigned char left_operand, unsigned char right_operand)
 
     if ((FLAGS & FLAG_NEGATIVE) == FLAG_NEGATIVE)
     {
-        IP = left_operand;
+        IP = left_operand + CODE_OFFSET;
         return left_operand;
     }
 
@@ -346,7 +394,30 @@ int opcode_jg(unsigned char left_operand, unsigned char right_operand)
 
     if ((FLAGS & FLAG_POSITIVE) == FLAG_POSITIVE)
     {
-        IP = left_operand;
+        IP = left_operand + CODE_OFFSET;
+        return left_operand;
+    }
+
+    return 255;
+}
+
+int opcode_jloe(unsigned char left_operand, unsigned char right_operand)
+{
+
+    if ((FLAGS & FLAG_NEGATIVE) == FLAG_NEGATIVE || (FLAGS & FLAG_ZERO) == FLAG_ZERO)
+    {
+        IP = left_operand + CODE_OFFSET;
+        return left_operand;
+    }
+
+    return 255;
+}
+
+int opcode_jgoe(unsigned char left_operand, unsigned char right_operand)
+{
+    if ((FLAGS & FLAG_POSITIVE) == FLAG_POSITIVE || (FLAGS & FLAG_ZERO) == FLAG_ZERO)
+    {
+        IP = left_operand + CODE_OFFSET;
         return left_operand;
     }
 
@@ -442,6 +513,77 @@ int opcode_divmi(unsigned char left_operand, unsigned char right_operand)
     return OUTPUT;
 }
 
+int opcode_and(unsigned char left_operand, unsigned char right_operand)
+{
+    return left_operand & right_operand;
+}
+
+int opcode_or(unsigned char left_operand, unsigned char right_operand)
+{
+    return left_operand | right_operand;
+}
+
+int opcode_xor(unsigned char left_operand, unsigned char right_operand)
+{
+    return left_operand ^ right_operand;
+}
+
+int opcode_not(unsigned char left_operand, unsigned char right_operand)
+{
+    return ~left_operand;
+}
+
+int opcode_shl(unsigned char left_operand, unsigned char right_operand)
+{
+    return left_operand << right_operand;
+}
+
+int opcode_shr(unsigned char left_operand, unsigned char right_operand)
+{
+    return left_operand >> right_operand;
+}
+
+int opcode_push(unsigned char left_operand, unsigned char right_operand)
+{
+    if(stack_ptr == STACK_BOUNDARY){
+        printf("Stack is full\n");
+        return left_operand;
+    }
+    stack_ptr--;
+    program[stack_ptr] = left_operand;
+    return left_operand;
+}
+
+int opcode_pop(unsigned char left_operand, unsigned char right_operand)
+{
+    unsigned char tmp = program[stack_ptr];
+    program[stack_ptr] = 0;
+    stack_ptr++;
+
+    return tmp;
+}
+
+int opcode_print_stack(unsigned char left_operand, unsigned char right_operand){
+    for(int i = STACK_BOUNDARY; i < PROGRAM_SIZE; i++){
+        printf("Value at index: %d -> %d\n", i, program[i]);
+    }
+    return 255;
+}
+
+int opcode_call(unsigned char left_operand, unsigned char right_operand)
+{
+    opcode_push(IP, 0);
+    IP  = left_operand + CODE_OFFSET;
+
+    return IP;
+}
+
+int opcode_return(unsigned char left_operand, unsigned char right_operand)
+{
+    IP = opcode_pop(0,0);
+    return IP;
+}
+
 static const opcode_function_t opcode_functions[INSTRUCTIONS_COUNT] = {
     opcode_add, opcode_sub, opcode_mul,
     opcode_div, opcode_mod, opcode_stp,
@@ -451,7 +593,12 @@ static const opcode_function_t opcode_functions[INSTRUCTIONS_COUNT] = {
     opcode_jg, opcode_ldm, opcode_sti,
     opcode_str, opcode_addmr, opcode_submr,
     opcode_mulmr, opcode_divmr, opcode_addmi,
-    opcode_submi, opcode_mulmi, opcode_divmi        
+    opcode_submi, opcode_mulmi, opcode_divmi,
+    opcode_jloe, opcode_jgoe,opcode_and, 
+    opcode_or , opcode_xor,opcode_not,
+    opcode_shl, opcode_shr, opcode_push,
+    opcode_pop, opcode_print_stack, opcode_call,
+    opcode_return        
 };
 
 static bool cpu_fetch(void)
