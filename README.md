@@ -17,11 +17,11 @@ The VM processes programs using a classic **Fetch-Decode-Execute** cycle. It ope
 * **Extensible:** The modular design uses a lookup table of function pointers, making it simple to add new instructions.
 
 ## Quick Start
-1.  **Clone the Repository** and open `main.c`.
+1.  **Clone the Repository** and open `vm_morning_project.c`.
 2.  **Define your program** by populating the `program[]` byte array. Each instruction follows a 3-byte format: `[OPCODE, LEFT_OPERAND, RIGHT_OPERAND]`.
 3.  **Compile** with a standard C compiler:
     ```bash
-    gcc -o vm main.c
+    gcc -o vm vm_morning_project.c
     ```
 4.  **Execute** your bytecode:
     ```bash
