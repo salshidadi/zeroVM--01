@@ -53,10 +53,13 @@ typedef int (*opcode_function_t)(unsigned char, unsigned char);
 #define OPCODE_CALL 38
 #define OPCODE_RETURN 39
 
+#define OPCODE_ALLOC 40
+#define OPCODE_FREE 41
+#define OPCODE_PRINT_HEAP 42
 
 //////////////////////
 #define PROGRAM_SIZE sizeof(program)
-#define INSTRUCTIONS_COUNT 40
+#define INSTRUCTIONS_COUNT 43
 #define INSTRUCTION_SIZE 3
 
 #define LEFT_OPERAND IP + 1
@@ -65,13 +68,17 @@ typedef int (*opcode_function_t)(unsigned char, unsigned char);
 #define RX_COUNT 4
 
 #define CODE_OFFSET 5
+
 #define STACK_SIZE 5
 #define STACK_BOUNDARY (PROGRAM_SIZE - STACK_SIZE)
+
+#define HEAP_SIZE 10
+#define HEAP_START (PROGRAM_SIZE - STACK_SIZE - HEAP_SIZE)
 
 static unsigned char program[] = {
     // Data
     2, 4, 6, 8, 9,
-///////////////////////////////////
+    ///////////////////////////////////
     // Code
     // /* 0 */ 16, 0,1,  /* LDM R0, 2 */
     // /* 3 */ 16, 1, 2,  /* LDM R1, 6 */
@@ -84,20 +91,45 @@ static unsigned char program[] = {
 
     // /* 3 */ 16, 1, 2,  /* LDM R1, 6 */
 
-   /* 0 */  35, 10,0,
-   /* 3 */  38, 21, 0, //call
-   /* 6 */  35, 20, 0,
-   /* 9 */  35, 30, 0,
-   /* 12 */  35, 40, 0,
-   /* 15 */  35, 50, 0,
-   /* 18 */  11, 33, 0, //jmp
-   /* 21 */  37,0, 0, // called
-  /* 24 */  0, 40, 16,
-   /* 27 */  0, 50, 13,   
-   /* 30 */  39, 0, 0, //return 
-    /* 33 */  35, 30, 0,
+    // /* 0 */ 35, 10, 0,
+    // /* 3 */ 38, 21, 0, // call
+    // /* 6 */ 35, 20, 0,
+    // /* 9 */ 35, 30, 0,
+    // /* 12 */ 35, 40, 0,
+    // /* 15 */ 35, 50, 0,
+    // /* 18 */ 11, 33, 0, // jmp
+    // /* 21 */ 37, 0, 0,  // called
+    // /* 24 */ 0, 40, 16,
+    // /* 27 */ 0, 50, 13,
+    // /* 30 */ 39, 0, 0, // return
+    // /* 33 */ 35, 30, 0,
+
+    /* 0 */ 40, 3, 0,
+    /* 0 */ 40, 2, 0,
+    /* 0 */ 40, 1, 0,
+    /* 0 */ 40, 3, 0,
+    /* 0 */ 40, 3, 0,
+    /* 0 */ 42, 0, 0,
+    /* 0 */ 41, 1, 3,
+    /* 0 */ 41, 6, 2,
+    /* 0 */ 42, 0, 0,
+
+
+
     //////////////////////////////////////////
-    //stack
+    // heap
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    ///////////////////////////////////////////
+    // stack
     0,
     0,
     0,
@@ -111,13 +143,15 @@ static unsigned char IR[INSTRUCTION_SIZE] = {0, 0, 0};
 static int OUTPUT = 0;
 static int stack_ptr = PROGRAM_SIZE;
 
+static int heap_ptr = HEAP_START;
+static int allocated_heap = 0;
+
 static unsigned char FLAGS = 0;
 
 #define FLAG_ZERO 1
 #define FLAG_NEGATIVE 2
 #define FLAG_POSITIVE 4
 #define FLAG_EVEN 8
-
 
 /* 0000 0000 */
 /* xxxx xxNZ */
@@ -358,7 +392,8 @@ int opcode_cmp(unsigned char left_operand, unsigned char right_operand)
         FLAGS = FLAG_NEGATIVE;
     }
 
-    if(OUTPUT % 2 == 0){
+    if (OUTPUT % 2 == 0)
+    {
         FLAGS |= FLAG_EVEN;
     }
 
@@ -504,7 +539,8 @@ int opcode_mulmi(unsigned char left_operand, unsigned char right_operand)
 
 int opcode_divmi(unsigned char left_operand, unsigned char right_operand)
 {
-    if(right_operand == 0){
+    if (right_operand == 0)
+    {
         printf("Expetion: divide by zero\n");
         return 1;
     }
@@ -545,7 +581,8 @@ int opcode_shr(unsigned char left_operand, unsigned char right_operand)
 
 int opcode_push(unsigned char left_operand, unsigned char right_operand)
 {
-    if(stack_ptr == STACK_BOUNDARY){
+    if (stack_ptr == STACK_BOUNDARY)
+    {
         printf("Stack is full\n");
         return left_operand;
     }
@@ -556,6 +593,11 @@ int opcode_push(unsigned char left_operand, unsigned char right_operand)
 
 int opcode_pop(unsigned char left_operand, unsigned char right_operand)
 {
+    if (stack_ptr == PROGRAM_SIZE)
+    {
+        printf("Stack is empty\n");
+        return stack_ptr;
+    }
     unsigned char tmp = program[stack_ptr];
     program[stack_ptr] = 0;
     stack_ptr++;
@@ -563,8 +605,12 @@ int opcode_pop(unsigned char left_operand, unsigned char right_operand)
     return tmp;
 }
 
-int opcode_print_stack(unsigned char left_operand, unsigned char right_operand){
-    for(int i = STACK_BOUNDARY; i < PROGRAM_SIZE; i++){
+int opcode_print_stack(unsigned char left_operand, unsigned char right_operand)
+{
+    printf("\nStack data is presented below\n\n");
+
+    for (int i = STACK_BOUNDARY; i < PROGRAM_SIZE; i++)
+    {
         printf("Value at index: %d -> %d\n", i, program[i]);
     }
     return 255;
@@ -573,15 +619,82 @@ int opcode_print_stack(unsigned char left_operand, unsigned char right_operand){
 int opcode_call(unsigned char left_operand, unsigned char right_operand)
 {
     opcode_push(IP, 0);
-    IP  = left_operand + CODE_OFFSET;
+    IP = left_operand + CODE_OFFSET;
 
     return IP;
 }
 
 int opcode_return(unsigned char left_operand, unsigned char right_operand)
 {
-    IP = opcode_pop(0,0);
+    IP = opcode_pop(0, 0);
     return IP;
+}
+
+int opcode_alloc(unsigned char left_operand, unsigned char right_operand)
+{
+    if (allocated_heap == HEAP_SIZE || (HEAP_SIZE - allocated_heap) < left_operand)
+    {
+        printf("Heap is full\n");
+        return allocated_heap;
+    }
+
+    int free_sequential_space = 0;
+    for (int i = HEAP_START; i < STACK_BOUNDARY; i++)
+    {
+        if (program[i] == 0)
+        {
+            free_sequential_space++;
+        }
+        if (free_sequential_space == left_operand)
+        {
+            heap_ptr = i - left_operand + 1;
+            break;
+        }
+        if ((i + 1) != STACK_BOUNDARY && program[i + 1] == 1)
+        {
+            free_sequential_space = 0;
+        }
+    }
+
+    if (free_sequential_space == left_operand)
+    {
+        for (int i = 0; i < left_operand; i++)
+        {
+            program[heap_ptr] = 1;
+            heap_ptr++;
+            allocated_heap++;
+        }
+    }
+
+    return allocated_heap;
+}
+
+int opcode_free(unsigned char left_operand, unsigned char right_operand)
+{
+    if(allocated_heap == 0){
+        printf("Heap is empty\n");
+        return allocated_heap;
+    } else if((left_operand + right_operand) >= HEAP_SIZE){
+        printf("Wrong heap address\n");
+    }
+
+    heap_ptr = left_operand + HEAP_START;
+    int end_ptr = heap_ptr + right_operand;
+    for(int i = heap_ptr; i < end_ptr; i++){
+        program[heap_ptr] = 0;
+        heap_ptr++;
+        allocated_heap--;
+    }
+    return allocated_heap;
+}
+
+int opcode_print_heap(unsigned char left_operand, unsigned char right_operand)
+{
+    printf("\nHeap data is presented below\n\n");
+    for (int i = HEAP_START; i < STACK_BOUNDARY; i++)
+    {
+        printf("Value at index %d -> %d\n", i, program[i]);
+    }
 }
 
 static const opcode_function_t opcode_functions[INSTRUCTIONS_COUNT] = {
@@ -594,12 +707,12 @@ static const opcode_function_t opcode_functions[INSTRUCTIONS_COUNT] = {
     opcode_str, opcode_addmr, opcode_submr,
     opcode_mulmr, opcode_divmr, opcode_addmi,
     opcode_submi, opcode_mulmi, opcode_divmi,
-    opcode_jloe, opcode_jgoe,opcode_and, 
-    opcode_or , opcode_xor,opcode_not,
+    opcode_jloe, opcode_jgoe, opcode_and,
+    opcode_or, opcode_xor, opcode_not,
     opcode_shl, opcode_shr, opcode_push,
     opcode_pop, opcode_print_stack, opcode_call,
-    opcode_return        
-};
+    opcode_return, opcode_alloc, opcode_free,
+    opcode_print_heap};
 
 static bool cpu_fetch(void)
 {
